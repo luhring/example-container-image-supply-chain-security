@@ -51,3 +51,25 @@ jobs:
         with:
           name: sbom.syft.json
           path: ./sbom.syft.json
+
+  scan_for_vulnerabilities:
+    needs: create_image_sbom
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: sbom.syft.json
+
+      - name: "install Grype"
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: "scan for vulnerabilities"
+        # Normally, we'd fail the pipeline if we detected vulnerabilities above a threshold. For this example, we won't.
+        run: |
+          grype sbom:./sbom.syft.json -o json > ./vulnerability-scan.grype.json
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: vulnerability-scan.grype.json
+          path: ./vulnerability-scan.grype.json
