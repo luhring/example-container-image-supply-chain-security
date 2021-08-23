@@ -1,0 +1,22 @@
+{
+  "name": "example-container-image-supply-chain-security",
+  "version": "1.0.0",
+  "description": "Example repository that demonstrates a supply chain security workflow using Syft, Grype, Cosign",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luhring/example-container-image-supply-chain-security.git"
+  },
+  "author": "Dan Luhring",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/luhring/example-container-image-supply-chain-security/issues"
+  },
+  "homepage": "https://github.com/luhring/example-container-image-supply-chain-security#readme",
+  "dependencies": {
+    "lodash": "4.17.0"
+  }
+}
