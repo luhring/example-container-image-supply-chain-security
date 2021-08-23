@@ -33,3 +33,21 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
           echo "${{ secrets.COSIGN_KEY }}" > cosign.key
           cosign sign -key ./cosign.key "ghcr.io/luhring/example:git-$GITHUB_SHA"
+
+  create_image_sbom:
+    needs: build_image
+    runs-on: ubuntu-latest
+    steps:
+      - name: "install Syft"
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: "create the SBOM"
+        run: |
+          IMAGE_TAG="ghcr.io/luhring/example:git-$GITHUB_SHA"
+          syft "registry:$IMAGE_TAG" -o json > ./sbom.syft.json
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: sbom.syft.json
+          path: ./sbom.syft.json
