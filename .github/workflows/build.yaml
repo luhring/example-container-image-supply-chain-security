@@ -12,5 +12,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - run: |
-          docker build -t test:latest .
+
+      - name: "build and push the image"
+        run: |
+          IMAGE_TAG="ghcr.io/luhring/example:git-$GITHUB_SHA"
+          docker build -t "$IMAGE_TAG" .
+
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
+          docker push "$IMAGE_TAG"
+
+      - uses: sigstore/cosign-installer@main
+
+      - name: "sign the image"
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          echo "${{ secrets.COSIGN_KEY }}" > cosign.key
+          cosign sign -key ./cosign.key "ghcr.io/luhring/example:git-$GITHUB_SHA"
