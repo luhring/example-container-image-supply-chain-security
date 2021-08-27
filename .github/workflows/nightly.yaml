@@ -1,0 +1,32 @@
+on:
+  push:
+  schedule:
+    - cron: "0 5 * * *"
+
+jobs:
+  scan_for_vulnerabilities:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/luhring/example-ci:latest
+    steps:
+      - name: "retrieve SBOM from attestation in registry"
+        run: |
+          echo "${{ secrets.COSIGN_PUB }}" > ./cosign.pub
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
+
+          DIGEST=$(crane digest "ghcr.io/luhring/example:git-$GITHUB_SHA")
+          IMAGE="ghcr.io/luhring/example@$DIGEST"
+          cosign verify-attestation -key ./cosign.pub $IMAGE > ./attestation_output
+
+          # Isolate the Syft SBOM from the rest of the attestation
+          cat ./attestation_output | jq -s -c 'map(.payload | @base64d | fromjson | .predicate.Data | fromjson | select(.descriptor.name == "syft")) | first' > ./sbom.syft.json
+
+      - name: "scan for vulnerabilities"
+        # Normally, we'd fail the pipeline if we detected vulnerabilities above a threshold. For this example, we won't.
+        run: |
+          grype sbom:./sbom.syft.json -o json | jq -c > ./vulnerability-scan.grype.json
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: vulnerability-scan.grype.json
+          path: ./vulnerability-scan.grype.json
