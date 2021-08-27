@@ -67,7 +67,7 @@ jobs:
       - name: "scan for vulnerabilities"
         # Normally, we'd fail the pipeline if we detected vulnerabilities above a threshold. For this example, we won't.
         run: |
-          grype sbom:./sbom.syft.json -o json > ./vulnerability-scan.grype.json
+          grype sbom:./sbom.syft.json -o json | jq -c > ./vulnerability-scan.grype.json
 
       - uses: actions/upload-artifact@v2
         with:
@@ -99,3 +99,29 @@ jobs:
           IMAGE_TAG="ghcr.io/luhring/example:git-$GITHUB_SHA"
 
           cosign attest -predicate "$SBOM_FILE" -key ./cosign.key "$IMAGE_TAG"
+
+  create_vulnerability_scan_attestation:
+    needs: scan_for_vulnerabilities
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.17-alpine
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: vulnerability-scan.grype.json
+
+      - run: |
+          go install github.com/sigstore/cosign/cmd/cosign@main
+
+      - name: "attest the vulnerability scan"
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          apk add docker
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
+          echo "${{ secrets.COSIGN_KEY }}" > cosign.key
+
+          VULNERABILITY_SCAN_FILE="./vulnerability-scan.grype.json"
+          IMAGE_TAG="ghcr.io/luhring/example:git-$GITHUB_SHA"
+
+          cosign attest -predicate "$VULNERABILITY_SCAN_FILE" -key ./cosign.key "$IMAGE_TAG"
