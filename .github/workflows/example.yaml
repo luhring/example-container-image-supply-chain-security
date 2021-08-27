@@ -45,7 +45,7 @@ jobs:
       - name: "create the SBOM"
         run: |
           IMAGE_TAG="ghcr.io/luhring/example:git-$GITHUB_SHA"
-          syft "registry:$IMAGE_TAG" -o json > ./sbom.syft.json
+          syft "registry:$IMAGE_TAG" -o json | jq -c > ./sbom.syft.json
 
       - uses: actions/upload-artifact@v2
         with:
@@ -73,3 +73,29 @@ jobs:
         with:
           name: vulnerability-scan.grype.json
           path: ./vulnerability-scan.grype.json
+
+  create_sbom_attestation:
+    needs: create_image_sbom
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.17-alpine
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: sbom.syft.json
+
+      - run: |
+          go install github.com/sigstore/cosign/cmd/cosign@main
+
+      - name: "attest the sbom"
+        env:
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          apk add docker
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
+          echo "${{ secrets.COSIGN_KEY }}" > cosign.key
+
+          SBOM_FILE="./sbom.syft.json"
+          IMAGE_TAG="ghcr.io/luhring/example:git-$GITHUB_SHA"
+
+          cosign attest -predicate "$SBOM_FILE" -key ./cosign.key "$IMAGE_TAG"
