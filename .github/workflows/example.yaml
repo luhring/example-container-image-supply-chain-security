@@ -9,6 +9,8 @@ on:
 jobs:
   build_image:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/luhring/example-ci:latest
     steps:
       - uses: actions/checkout@v2
 
@@ -23,9 +25,9 @@ jobs:
   sign_image:
     needs: build_image
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/luhring/example-ci:latest
     steps:
-      - uses: sigstore/cosign-installer@main
-
       - name: "sign the image"
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
@@ -37,11 +39,9 @@ jobs:
   create_image_sbom:
     needs: build_image
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/luhring/example-ci:latest
     steps:
-      - name: "install Syft"
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-
       - name: "create the SBOM"
         run: |
           IMAGE_TAG="ghcr.io/luhring/example:git-$GITHUB_SHA"
@@ -55,14 +55,12 @@ jobs:
   scan_for_vulnerabilities:
     needs: create_image_sbom
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/luhring/example-ci:latest
     steps:
       - uses: actions/download-artifact@v2
         with:
           name: sbom.syft.json
-
-      - name: "install Grype"
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
 
       - name: "scan for vulnerabilities"
         # Normally, we'd fail the pipeline if we detected vulnerabilities above a threshold. For this example, we won't.
@@ -78,20 +76,16 @@ jobs:
     needs: create_image_sbom
     runs-on: ubuntu-latest
     container:
-      image: golang:1.17-alpine
+      image: ghcr.io/luhring/example-ci:latest
     steps:
       - uses: actions/download-artifact@v2
         with:
           name: sbom.syft.json
 
-      - run: |
-          go install github.com/sigstore/cosign/cmd/cosign@main
-
       - name: "attest the sbom"
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: |
-          apk add docker
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
           echo "${{ secrets.COSIGN_KEY }}" > cosign.key
 
@@ -104,20 +98,16 @@ jobs:
     needs: scan_for_vulnerabilities
     runs-on: ubuntu-latest
     container:
-      image: golang:1.17-alpine
+      image: ghcr.io/luhring/example-ci:latest
     steps:
       - uses: actions/download-artifact@v2
         with:
           name: vulnerability-scan.grype.json
 
-      - run: |
-          go install github.com/sigstore/cosign/cmd/cosign@main
-
       - name: "attest the vulnerability scan"
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: |
-          apk add docker
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
           echo "${{ secrets.COSIGN_KEY }}" > cosign.key
 
