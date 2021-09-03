@@ -2,7 +2,6 @@ on:
   push:
     branches:
       - main
-  pull_request:
 
 jobs:
   build_image:
@@ -14,11 +13,12 @@ jobs:
 
       - name: "build and push the image"
         run: |
-          IMAGE_TAG="ghcr.io/luhring/example:git-$GITHUB_SHA"
-          docker build -t "$IMAGE_TAG" .
+          IMAGE="ghcr.io/luhring/example:git-$GITHUB_SHA"
+
+          docker build -t "$IMAGE" .
 
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
-          docker push "$IMAGE_TAG"
+          docker push "$IMAGE"
 
   sign_image:
     needs: build_image
@@ -32,7 +32,11 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
           echo "${{ secrets.COSIGN_KEY }}" > cosign.key
-          cosign sign -key ./cosign.key "ghcr.io/luhring/example:git-$GITHUB_SHA"
+
+          IMAGE="ghcr.io/luhring/example:git-$GITHUB_SHA"
+
+          # Sign the image (...and this step pushes the signature to the registry, too)
+          cosign sign -key ./cosign.key "$IMAGE"
 
   create_image_sbom:
     needs: build_image
@@ -42,8 +46,11 @@ jobs:
     steps:
       - name: "create the SBOM"
         run: |
-          IMAGE_TAG="ghcr.io/luhring/example:git-$GITHUB_SHA"
-          syft "registry:$IMAGE_TAG" -o json | jq -c > ./sbom.syft.json
+          IMAGE="ghcr.io/luhring/example:git-$GITHUB_SHA"
+
+          # We're using `jq` only to minimize the size of the SBOM payload. In the future, Syft might produce compacted JSON data by default.
+
+          syft "registry:$IMAGE" -o json | jq --compact-output > ./sbom.syft.json
 
       - uses: actions/upload-artifact@v2
         with:
@@ -61,9 +68,10 @@ jobs:
           name: sbom.syft.json
 
       - name: "scan for vulnerabilities"
-        # Normally, we'd fail the pipeline if we detected vulnerabilities above a threshold. For this example, we won't.
         run: |
-          grype sbom:./sbom.syft.json -o json | jq -c > ./vulnerability-scan.grype.json
+          # Normally, we'd fail the pipeline if we detect vulnerabilities above a certain severity threshold. But for this example, we won't, so that the remaining steps can be demonstrated.
+
+          grype sbom:./sbom.syft.json -o json | jq --compact-output > ./vulnerability-scan.grype.json
 
       - uses: actions/upload-artifact@v2
         with:
@@ -83,14 +91,15 @@ jobs:
       - name: "attest the sbom"
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          SBOM_FILE: ./sbom.syft.json
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
           echo "${{ secrets.COSIGN_KEY }}" > cosign.key
 
-          SBOM_FILE="./sbom.syft.json"
-          IMAGE_TAG="ghcr.io/luhring/example:git-$GITHUB_SHA"
+          IMAGE="ghcr.io/luhring/example:git-$GITHUB_SHA"
 
-          cosign attest -predicate "$SBOM_FILE" -key ./cosign.key "$IMAGE_TAG"
+          # Put the SBOM into a signed "attestation" about the image, and push this attestation to the registry.
+          cosign attest -predicate "$SBOM_FILE" -key ./cosign.key "$IMAGE"
 
   create_vulnerability_scan_attestation:
     needs: scan_for_vulnerabilities
@@ -105,11 +114,12 @@ jobs:
       - name: "attest the vulnerability scan"
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          VULNERABILITY_SCAN_FILE: ./vulnerability-scan.grype.json
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
           echo "${{ secrets.COSIGN_KEY }}" > cosign.key
 
-          VULNERABILITY_SCAN_FILE="./vulnerability-scan.grype.json"
-          IMAGE_TAG="ghcr.io/luhring/example:git-$GITHUB_SHA"
+          IMAGE="ghcr.io/luhring/example:git-$GITHUB_SHA"
 
-          cosign attest -predicate "$VULNERABILITY_SCAN_FILE" -key ./cosign.key "$IMAGE_TAG"
+          # Put the vulnerability scan report into a signed "attestation" about the image, and push this attestation to the registry.
+          cosign attest -predicate "$VULNERABILITY_SCAN_FILE" -key ./cosign.key "$IMAGE"

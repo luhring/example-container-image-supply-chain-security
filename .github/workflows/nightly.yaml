@@ -1,5 +1,6 @@
 on:
   schedule:
+    # Run this workflow every night at 5am UTC.
     - cron: "0 5 * * *"
 
 jobs:
@@ -13,17 +14,22 @@ jobs:
           echo "${{ secrets.COSIGN_PUB }}" > ./cosign.pub
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
 
+          # We'll scan the image built from the latest commit on the default branch. In real scenarios, you'd want to be much more careful to ensure you're scanning all of the images that might be consumed in a downstream workflow.
+
           DIGEST=$(crane digest "ghcr.io/luhring/example:git-$GITHUB_SHA")
           IMAGE="ghcr.io/luhring/example@$DIGEST"
+
+          # Retrieve the attestation for this image. If the attestation has been tampered with, this command will fail. (This is a good thing! We don't want to scan for vulnerabilities using a faulty SBOM.)
           cosign verify-attestation -key ./cosign.pub $IMAGE > ./attestation_output
 
           # Isolate the Syft SBOM from the rest of the attestation
-          cat ./attestation_output | jq -s -c 'map(.payload | @base64d | fromjson | .predicate.Data | fromjson | select(.descriptor.name == "syft")) | first' > ./sbom.syft.json
+          cat ./attestation_output | jq --slurp --compact-output 'map(.payload | @base64d | fromjson | .predicate.Data | fromjson | select(.descriptor.name == "syft")) | first' > ./sbom.syft.json
 
       - name: "scan for vulnerabilities"
-        # Normally, we'd fail the pipeline if we detected vulnerabilities above a threshold. For this example, we won't.
         run: |
-          grype sbom:./sbom.syft.json -o json | jq -c > ./vulnerability-scan.grype.json
+          # Normally, we'd fail the pipeline if we detect vulnerabilities above a certain severity threshold. For this example, we won't.
+
+          grype sbom:./sbom.syft.json -o json | jq --compact-output > ./vulnerability-scan.grype.json
 
       - uses: actions/upload-artifact@v2
         with:
