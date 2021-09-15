@@ -71,12 +71,12 @@ jobs:
         run: |
           # Normally, we'd fail the pipeline if we detect vulnerabilities above a certain severity threshold. But for this example, we won't, so that the remaining steps can be demonstrated.
 
-          grype sbom:./sbom.syft.json -o json | jq --compact-output > ./vulnerability-scan.grype.json
+          grype sbom:./sbom.syft.json -o json | jq --compact-output > ./vulnerability-report.grype.json
 
       - uses: actions/upload-artifact@v2
         with:
-          name: vulnerability-scan.grype.json
-          path: ./vulnerability-scan.grype.json
+          name: vulnerability-report.grype.json
+          path: ./vulnerability-report.grype.json
 
   create_sbom_attestation:
     needs: create_image_sbom
@@ -109,12 +109,12 @@ jobs:
     steps:
       - uses: actions/download-artifact@v2
         with:
-          name: vulnerability-scan.grype.json
+          name: vulnerability-report.grype.json
 
       - name: "attest the vulnerability scan"
         env:
           COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
-          VULNERABILITY_SCAN_FILE: ./vulnerability-scan.grype.json
+          VULNERABILITY_SCAN_FILE: ./vulnerability-report.grype.json
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u luhring --password-stdin
           echo "${{ secrets.COSIGN_KEY }}" > cosign.key

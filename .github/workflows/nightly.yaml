@@ -29,9 +29,9 @@ jobs:
         run: |
           # Normally, we'd fail the pipeline if we detect vulnerabilities above a certain severity threshold. For this example, we won't.
 
-          grype sbom:./sbom.syft.json -o json | jq --compact-output > ./vulnerability-scan.grype.json
+          grype sbom:./sbom.syft.json -o json | jq --compact-output > ./vulnerability-report.grype.json
 
       - uses: actions/upload-artifact@v2
         with:
-          name: vulnerability-scan.grype.json
-          path: ./vulnerability-scan.grype.json
+          name: vulnerability-report.grype.json
+          path: ./vulnerability-report.grype.json
